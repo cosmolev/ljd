@@ -230,6 +230,8 @@ class _LocalsMarker(traverse.Visitor):
 
     def visit_identifier(self, node):
         if node.type == nodes.Identifier.T_SLOT:
+            if self._alt_mode and getattr(node, '_capture_temporary', False):
+                return
             queue = self._state().pending_slots
             slots = queue.setdefault(node.slot, [])
 

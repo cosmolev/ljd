@@ -54,6 +54,12 @@ def _build_function_definition(prototype, header):
     instructions = prototype.instructions
     node.statements.contents = _build_function_blocks(state, instructions)
 
+    # Preserve close locations after the builder's instruction normalization.
+    # UCLO is otherwise only a jump/no-op to the control-flow reconstructor.
+    node._upvalue_closes = [(addr, instruction.A)
+                           for addr, instruction in enumerate(instructions)
+                           if instruction.opcode == ins.UCLO.opcode]
+
     return node
 
 

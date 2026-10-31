@@ -40,6 +40,7 @@ import ljd.ast.builder
 import ljd.ast.slotworks
 import ljd.ast.validator
 import ljd.ast.locals
+import ljd.ast.upvalues
 import ljd.ast.unwarper
 import ljd.ast.mutator
 import ljd.ast.printast
@@ -386,6 +387,8 @@ class Main:
 
         assert ast is not None
 
+        ljd.ast.upvalues.prepare(ast)
+
         ljd.ast.validator.validate(ast, warped=True)
 
         ljd.ast.mutator.pre_pass(ast)
@@ -393,6 +396,7 @@ class Main:
         ljd.ast.validator.validate(ast, warped=True)
 
         ljd.ast.locals.mark_locals(ast)
+        ljd.ast.upvalues.mark_temporaries(ast)
 
         if self.options.dump_ast:
             ljd.ast.printast.dump("AST [locals]", ast)
@@ -470,6 +474,7 @@ class Main:
                                             del content_list[j - i]
 
         if not self.options.no_unwarp:
+            ljd.ast.upvalues.lower(ast)
             ljd.ast.locals.declare_registers(ast)
 
         return ast

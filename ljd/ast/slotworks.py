@@ -6,6 +6,7 @@ import os
 import ljd.ast.nodes as nodes
 import ljd.ast.traverse as traverse
 import ljd.ast.liveness as liveness
+import ljd.ast.upvalues as upvalues
 from ljd.ast.helpers import insert_table_record
 
 from typing import List
@@ -383,6 +384,10 @@ def _eliminate_simple_cases(simple):
         if _overwritten_register_dependency(info, ref, src):
             continue
 
+        if upvalues.preserve_call(info, ref, src):
+            info.assignment._preserve_live = True
+            continue
+
         # Set later on if we'd be simplifying something down to illegal Lua code. This is when we
         # substitute a primitive to somewhere it's not allowed, such as:
         #    local a=nil; a()  ---> nil()
@@ -509,7 +514,11 @@ def _preserve_local_snapshot(info, ref, src):
 
 
 def _eliminate_into_table_constructors(tables):
+    blocked = set()
     for info, ref in tables:
+        if info.assignment in blocked or upvalues.preserve_table_field(info, ref):
+            blocked.add(info.assignment)
+            continue
         constructor = info.assignment.expressions.contents[0]
         table_element = ref.path[-2]
         assignment = ref.path[-4]

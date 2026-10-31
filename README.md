@@ -7,7 +7,9 @@ cdata, single-result call/vararg adjustment and named-local swap snapshots, and
 prints valid anonymous calls. The loop-state repair also preserves writes needed by
 later iterations and loop exits, evaluates register snapshots before overwrites, and
 gives surviving registers local storage. Repeat/break reconstruction also preserves
-the path to the until test and skips that test when breaking. The [196-case authored regression suite](tests/correctness/README.md)
+the path to the until test and skips that test when breaking. Upvalues bind to
+lexical parent storage using prototype descriptors, including stripped captures,
+mutation and UCLO lifetimes. The [256-case authored regression suite](tests/correctness/README.md)
 records the verified improvements and remaining limitations. Engine changes live
 directly in this repository; downstream builds can pin this fork's commit.
 
