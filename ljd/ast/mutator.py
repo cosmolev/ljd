@@ -4,6 +4,7 @@
 
 import copy
 
+from ljd.ast import liveness
 from ljd.ast.helpers import *
 from ljd.bytecode.instructions import SLOT_FALSE, SLOT_TRUE
 
@@ -361,6 +362,10 @@ class MutatorVisitor(traverse.Visitor):
 
 
 def pre_pass(ast):
+    # Compute liveness on the bytecode CFG. The loop swapper moves for-loop
+    # warps into their initialization blocks; subsequent backedges target that
+    # synthetic header, but must not re-execute its initialization statements.
+    liveness.protect_live_writes(ast)
     traverse.traverse(SimpleLoopWarpSwapper(), ast)
 
     return ast

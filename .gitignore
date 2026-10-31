@@ -1,4 +1,5 @@
 *.lua[co]
+!tests/correctness/fixtures/inputs/*.luac
 *.py[cod]
 
 # C extensions

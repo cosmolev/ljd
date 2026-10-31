@@ -16,6 +16,84 @@ def mark_local_definitions(ast):
     traverse.traverse(_LocalDefinitionsMarker(), ast)
 
 
+def declare_registers(ast):
+    """Give surviving registers function-local storage after slot elimination.
+
+    A declaration inside a loop would reset loop-carried state on every iteration.
+    Function-entry declarations also avoid exposing stripped registers as globals.
+    Loop variables and parameters already have their own lexical declarations.
+    """
+    class Registers(traverse.Visitor):
+        def __init__(self):
+            super().__init__()
+            self.identifiers = []
+            self.assigned = set()
+
+        def _visit(self, node):
+            if not isinstance(node, nodes.FunctionDefinition):
+                super()._visit(node)
+
+        def visit_identifier(self, node):
+            if node.type == node.T_SLOT and node.slot >= 0:
+                self.identifiers.append(node)
+
+        def visit_assignment(self, node):
+            for dst in node.destinations.contents:
+                if isinstance(dst, nodes.Identifier) and dst.type == dst.T_SLOT and dst.slot >= 0:
+                    self.assigned.add(dst.slot)
+
+    class Names(traverse.Visitor):
+        def __init__(self):
+            super().__init__()
+            self.used = set()
+
+        def visit_identifier(self, node):
+            if node.name:
+                self.used.add(node.name)
+
+        def visit_constant(self, node):
+            if node.type == nodes.Constant.T_STRING:
+                self.used.add(node.value)
+
+    # Reserve names across nested functions too: declaring a local must not capture
+    # a global lookup that previously lived in a child function.
+    names = Names()
+    traverse.traverse(names, ast)
+
+    class Functions(traverse.Visitor):
+        def visit_function_definition(self, node):
+            registers = Registers()
+            registers._visit(node.arguments)
+            registers._visit(node.statements)
+            params = {v.slot for v in node.arguments.contents
+                      if isinstance(v, nodes.Identifier) and v.type == v.T_SLOT}
+            mapping = {}
+            for identifier in registers.identifiers:
+                slot = identifier.slot
+                if slot not in mapping:
+                    name = 'slot%d' % slot
+                    while name in names.used:
+                        name += '_'
+                    mapping[slot] = name
+                    names.used.add(name)
+                identifier.type = nodes.Identifier.T_LOCAL
+                identifier.name = mapping[slot]
+            declared = sorted(registers.assigned - params)
+            if declared:
+                declaration = nodes.Assignment()
+                declaration.type = nodes.Assignment.T_LOCAL_DEFINITION
+                for slot in declared:
+                    variable = nodes.Identifier()
+                    variable.type, variable.slot, variable.name = variable.T_LOCAL, slot, mapping[slot]
+                    declaration.destinations.contents.append(variable)
+                nil = nodes.Primitive()
+                nil.type = nodes.Primitive.T_NIL
+                declaration.expressions.contents.append(nil)
+                node.statements.contents.insert(0, declaration)
+
+    traverse.traverse(Functions(), ast)
+
+
 LIST_TYPES = (nodes.VariablesList,
               nodes.IdentifiersList,
               nodes.ExpressionsList,

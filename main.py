@@ -469,6 +469,9 @@ class Main:
                                         if getattr(subnode, "_invalidated", False):
                                             del content_list[j - i]
 
+        if not self.options.no_unwarp:
+            ljd.ast.locals.declare_registers(ast)
+
         return ast
 
 

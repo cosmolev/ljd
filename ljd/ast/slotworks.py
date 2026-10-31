@@ -5,6 +5,7 @@
 import os
 import ljd.ast.nodes as nodes
 import ljd.ast.traverse as traverse
+import ljd.ast.liveness as liveness
 from ljd.ast.helpers import insert_table_record
 
 from typing import List
@@ -125,6 +126,8 @@ def _fill_refs(data: RefsProcessData, ignore_ambiguous=True, safe_mode=True):
 
     for info in data.slots:
         assignment = info.assignment
+        if getattr(assignment, "_preserve_live", False):
+            continue
 
         if not isinstance(assignment, nodes.Assignment):
             assert isinstance(assignment, (nodes.IteratorWarp,
@@ -366,7 +369,7 @@ def _get_holder(path):
 
 def _eliminate_simple_cases(simple):
     for info, ref, src in simple:
-        if getattr(info.assignment, "_preserve_snapshot", False):
+        if getattr(info.assignment, "_preserve_snapshot", False) or getattr(info.assignment, "_preserve_live", False):
             continue
         holder = ref.path[-2]
         dst = ref.identifier
@@ -375,6 +378,9 @@ def _eliminate_simple_cases(simple):
             src = info.assignment.expressions.contents[0]
 
         if _preserve_local_snapshot(info, ref, src):
+            continue
+
+        if _overwritten_register_dependency(info, ref, src):
             continue
 
         # Set later on if we'd be simplifying something down to illegal Lua code. This is when we
@@ -429,6 +435,29 @@ def _eliminate_simple_cases(simple):
             found = _replace_node(holder, dst, src)
 
         assert found
+
+
+def _overwritten_register_dependency(info, ref, src):
+    """Keep an earlier register value when a later write would change it.
+
+    Liveness keeps loop-carried destinations, but a temporary can also snapshot
+    their old values. Inlining that temporary past a write reverses evaluation
+    order even when its destination has only one use.
+    """
+    dependencies = liveness.reads(src)
+    if not dependencies:
+        return False
+    block = next((n for n in reversed(info.references[0].path) if isinstance(n, nodes.Block)), None)
+    if block is None or block not in ref.path or info.assignment not in block.contents:
+        return False
+    use = next((n for n in ref.path[ref.path.index(block) + 1:] if n in block.contents), None)
+    last = len(block.contents) if use is None else block.contents.index(use)
+    first = block.contents.index(info.assignment)
+    for node in block.contents[first + 1:last]:
+        if not _is_invalidated(node) and dependencies & liveness.effects(node)[1]:
+            info.assignment._preserve_live = True
+            return True
+    return False
 
 
 def _preserve_local_snapshot(info, ref, src):
