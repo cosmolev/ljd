@@ -633,6 +633,9 @@ def _build_call(state, addr, instruction):
     call = nodes.FunctionCall()
     call.function = _build_slot(state, addr, instruction.A)
     call.arguments.contents = _build_call_arguments(state, addr, instruction)
+    # A CALL with one destination is adjusted to one value even when later
+    # inlined into the final argument, return or table-constructor position.
+    call.adjusted = instruction.opcode <= ins.CALL.opcode and instruction.B == 2
 
     line_marked = [call]
 
@@ -662,14 +665,16 @@ def _build_call(state, addr, instruction):
 def _build_vararg(state, addr, instruction):
     base = instruction.A
     last_slot = base + instruction.B - 2
+    value = nodes.Vararg()
+    value.adjusted = instruction.B == 2
 
     if last_slot < base:
         node = nodes.Assignment()
         node.destinations.contents.append(nodes.MULTRES())
-        node.expressions.contents.append(nodes.Vararg())
+        node.expressions.contents.append(value)
     else:
         node = _build_range_assignment(state, addr, base, last_slot)
-        node.expressions.contents.append(nodes.Vararg())
+        node.expressions.contents.append(value)
 
     return node
 

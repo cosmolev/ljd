@@ -1,0 +1,5 @@
+print(tostring(0LL), tostring(0ULL))
+print(tostring(0x7fffffffffffffffLL), tostring(0x8000000000000000LL))
+print(tostring(0xffffffffffffffffLL), tostring(0xffffffffffffffffULL))
+print(tostring(0x0020000000000001LL), tostring(0x0020000000000001ULL))
+print(tostring(-7LL), tostring(7ULL + 1ULL))

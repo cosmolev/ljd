@@ -1,6 +1,13 @@
 LuaJIT Raw-Bytecode Decompiler (LJD)
 ===
 
+This fork keeps the scoped correctness fixes on the `cosmolev` branch, based on
+`Aussiemon/ljd@2ed0381b2e563531b0fe8de0a574cea8e6a04478`. It preserves integer
+cdata, single-result call/vararg adjustment and named-local swap snapshots, and
+prints valid anonymous calls. The [106-case authored regression suite](tests/correctness/README.md)
+records the verified improvements and remaining limitations. Engine changes live
+directly in this repository; downstream builds can pin this fork's commit.
+
 The original name was _ljwthgnd_, as in _LuaJIT 'What The Hell is Going On'
 Decompiler_; named under the LuaJIT C sources variable-naming convention.
 

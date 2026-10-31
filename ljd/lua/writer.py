@@ -679,13 +679,17 @@ class Visitor(traverse.Visitor):
             self._write("]")
 
     def visit_vararg(self, node):
-        self._write("...")
+        self._write("(...)" if getattr(node, "adjusted", False) else "...")
 
     def visit_function_call(self, node):
         is_statement = self._state().current_statement == STATEMENT_NONE
 
         if is_statement:
             self._start_statement(STATEMENT_FUNCTION_CALL)
+
+        adjusted = getattr(node, "adjusted", False) and not is_statement
+        if adjusted:
+            self._write("(")
 
         # We are going to modify this list so we can remove the first argument
         args = node.arguments.contents
@@ -720,10 +724,18 @@ class Visitor(traverse.Visitor):
 
             self._skip(node.arguments)
         else:
+            literal_function = isinstance(node.function, nodes.FunctionDefinition)
+            if literal_function:
+                self._write("(")
             self._visit(node.function)
+            if literal_function:
+                self._write(")")
 
             self._write("(")
             self._visit(node.arguments)
+            self._write(")")
+
+        if adjusted:
             self._write(")")
 
         if is_statement:

@@ -1,0 +1,44 @@
+name: LuaJIT correctness
+on:
+  push:
+    branches: [cosmolev]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  authored-semantics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build pinned compilers and fetch baseline
+        run: |
+          python tests/correctness/tools.py "$RUNNER_TEMP/ljd-vms"
+          python - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, urllib.request
+          pin = json.load(open('tests/correctness/upstream.json'))
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          data = urllib.request.urlopen(pin['url'], timeout=60).read()
+          assert hashlib.sha256(data).hexdigest() == pin['sha256']
+          (root / 'ljd.tar.gz').write_bytes(data)
+          (root / 'ljd-baseline').mkdir()
+          subprocess.run(['tar', '-xzf', root / 'ljd.tar.gz', '-C', root / 'ljd-baseline', '--strip-components=1'], check=True)
+          PY
+      - name: Verify original and recovered behavior across all layouts
+        run: >-
+          python tests/correctness/verify.py --tools "$RUNNER_TEMP/ljd-vms/tools.json"
+          --baseline "$RUNNER_TEMP/ljd-baseline/main.py" --candidate "$GITHUB_WORKSPACE/main.py"
+          --output "$RUNNER_TEMP/ljd-evidence"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ljd-python-${{ matrix.python }}
+          path: ${{ runner.temp }}/ljd-evidence
+          retention-days: 14

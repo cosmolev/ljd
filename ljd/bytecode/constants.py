@@ -16,6 +16,17 @@ class Table:
         self.dictionary = []
 
 
+class IntegerCdata:
+    def __init__(self, bits, unsigned):
+        self.bits = bits
+        self.unsigned = unsigned
+
+    def __str__(self):
+        # Hex literals preserve the exact two's-complement bit pattern, including
+        # INT64_MIN and UINT64_MAX, without rounding through a Lua number.
+        return "0x%016x%s" % (self.bits, "ULL" if self.unsigned else "LL")
+
+
 class Constants:
     def __init__(self):
         self.upvalue_references = []

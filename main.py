@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# decompiler ljd 2ed0381-r1; immutable file hashes in decompiler-source.json.
 #
 # The MIT License (MIT)
 #

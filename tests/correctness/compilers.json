@@ -1,0 +1,14 @@
+{
+  "luajit-2.0": {
+    "revision": "592f9e3f549c7f176a9a7a0d70189559305f2eda",
+    "url": "https://codeload.github.com/LuaJIT/LuaJIT/tar.gz/592f9e3f549c7f176a9a7a0d70189559305f2eda",
+    "sha256": "d1746949d606ff973610471cccda57972d46c49597ab11f1f4b41561b9f0c4a9",
+    "timestamp": "2026-10-29T11:45:28Z"
+  },
+  "luajit-2.1": {
+    "revision": "8ca762976ebc85ad9bde3e15f147a7e326e0dd01",
+    "url": "https://codeload.github.com/LuaJIT/LuaJIT/tar.gz/8ca762976ebc85ad9bde3e15f147a7e326e0dd01",
+    "sha256": "3154fa4578724101cdaadb9356c7e2944a47920c68dae584be3d53d5cc6ba01e",
+    "timestamp": "2026-10-29T11:57:15Z"
+  }
+}

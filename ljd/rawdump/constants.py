@@ -63,13 +63,19 @@ def _read_complex_constants(parser, complex_constants):
 
             complex_constants.append(table)
         elif constant_type != BCDUMP_KGC_CHILD:
-            number = _read_number(parser)
-
             if constant_type == BCDUMP_KGC_COMPLEX:
+                number = _read_number(parser)
                 imaginary = _read_number(parser)
                 complex_constants.append((number, imaginary))
             else:
-                complex_constants.append(number)
+                assert constant_type in (BCDUMP_KGC_I64, BCDUMP_KGC_U64)
+                lo = parser.stream.read_uleb128()
+                hi = parser.stream.read_uleb128()
+                # The dump stores two ULEB128 words, independent of host endianness.
+                # Keep every bit and the signedness; these are not IEEE doubles.
+                value = (hi << 32) | lo
+                complex_constants.append(ljd.bytecode.constants.IntegerCdata(
+                    value, constant_type == BCDUMP_KGC_U64))
         else:
             complex_constants.append(parser.prototypes.pop())
 

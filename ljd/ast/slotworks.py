@@ -366,11 +366,16 @@ def _get_holder(path):
 
 def _eliminate_simple_cases(simple):
     for info, ref, src in simple:
+        if getattr(info.assignment, "_preserve_snapshot", False):
+            continue
         holder = ref.path[-2]
         dst = ref.identifier
 
         if src is None:
             src = info.assignment.expressions.contents[0]
+
+        if _preserve_local_snapshot(info, ref, src):
+            continue
 
         # Set later on if we'd be simplifying something down to illegal Lua code. This is when we
         # substitute a primitive to somewhere it's not allowed, such as:
@@ -424,6 +429,54 @@ def _eliminate_simple_cases(simple):
             found = _replace_node(holder, dst, src)
 
         assert found
+
+
+def _preserve_local_snapshot(info, ref, src):
+    """Keep a MOV snapshot if a named local is overwritten before its use.
+
+    This intentionally handles only straight-line moves within one basic block.
+    Cross-block register liveness remains the responsibility of slot analysis.
+    """
+    if not isinstance(src, nodes.Identifier) or src.type != nodes.Identifier.T_LOCAL:
+        return False
+    block = next((n for n in reversed(info.references[0].path) if isinstance(n, nodes.Block)), None)
+    if block is None or block not in ref.path or info.assignment not in block.contents:
+        return False
+    use = next((n for n in ref.path[ref.path.index(block) + 1:] if n in block.contents), None)
+    if use is None:
+        return False
+    first, last = block.contents.index(info.assignment), block.contents.index(use)
+    overwritten = any(isinstance(n, nodes.Assignment) and any(
+        isinstance(dst, nodes.Identifier) and dst.type == nodes.Identifier.T_LOCAL
+        and dst.slot == src.slot for dst in n.destinations.contents)
+        for n in block.contents[first + 1:last] if not _is_invalidated(n))
+    if not overwritten:
+        return False
+
+    class Names(traverse.Visitor):
+        def __init__(self):
+            super().__init__()
+            self.names = set()
+
+        def visit_identifier(self, node):
+            if node.name:
+                self.names.add(node.name)
+
+        def visit_constant(self, node):
+            if node.type == nodes.Constant.T_STRING:
+                self.names.add(node.value)
+
+    names = Names()
+    traverse.traverse(names, info.references[0].path[0])
+    name = "__ljd_snapshot_%d" % info.slot_id
+    while name in names.names:
+        name += "_"
+    for reference in info.references:
+        reference.identifier.type = nodes.Identifier.T_LOCAL
+        reference.identifier.name = name
+    info.assignment.type = nodes.Assignment.T_LOCAL_DEFINITION
+    info.assignment._preserve_snapshot = True
+    return True
 
 
 def _eliminate_into_table_constructors(tables):
