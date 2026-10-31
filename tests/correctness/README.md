@@ -1,10 +1,10 @@
 # Authored LuaJIT correctness checks
 
-These 172 cases qualify the scoped fixes from
+These 196 cases qualify the scoped fixes from
 [cosmolev/decompiler#174](https://github.com/cosmolev/decompiler/issues/174) and
 the loop-state repair for [#182](https://github.com/cosmolev/decompiler/issues/182).
 All inputs are authored programs. No recovered public/user program is executed.
-The four exact issue attachments are retained alongside 28 programs compiled with
+The four exact issue attachments are retained alongside 32 programs compiled with
 debug information and stripped, for each of three pinned compiler/VM profiles:
 LuaJIT dump1 non-GC64, dump2 GC64 and dump2 non-GC64.
 
@@ -39,10 +39,9 @@ recovery; both recovery trials agree on source bytes and classification.
 The eleven new `loop-*.lua` programs cover repeat/while state, numeric and iterator
 accumulators, branch updates, early exits, empty loops and values used only after
 loop exit, nested loops, recursive calls, global-name collisions, register snapshots
-and call evaluation order. `loop-break.lua` retains a separate known failure in
-the combination of repeat/break and adjacent loops: both the previous engine and
-candidate fail `_fix_loops` with the same assertion for all six variants. It is not
-counted as a loop-state success.
+and call evaluation order. The #182 qualification retained `loop-break.lua` as a
+separate failure in repeat/break reconstruction. That failure is repaired by the
+follow-up below.
 
 Liveness is computed to a fixed point on the original bytecode CFG, before the
 loop swapper relocates numeric/iterator warps into initialization blocks. A second
@@ -55,9 +54,45 @@ function-local storage after the existing AST transformations.
 The earlier cdata, arity, swap and anonymous-call fixes remain covered. Stripped
 upvalue binding remains tracked in [#183](https://github.com/cosmolev/decompiler/issues/183).
 The table-control accumulator now survives, but its table-read snapshots still do
-not; the overall control remains a mismatch. Method, short-circuit, stripped-vararg
-and combined repeat/break limitations also remain in the matrix.
+not; the overall control remains a mismatch. Method, short-circuit and stripped-vararg
+limitations also remain in the matrix.
 Passing this finite suite does not establish universal LuaJIT recovery.
+
+## Repeat/break reconstruction
+
+The previous fork revision `bb2955b2f5c75564876288ecf32f7afe3ced5828` fails even this
+standalone program, with or without debug information:
+
+```lua
+local n = 0
+repeat
+  n = n + 1
+  if n == 3 then break end
+until n > 5
+print(n)
+```
+
+The branch which skips `break` targets the first until-condition block. The loop
+reconstructor extracts that condition as an expression but left the branch pointing
+outside the body, triggering `assert warp.false_target in body`. The repair adds
+an empty body exit and redirects that branch to it before removing the condition
+blocks. Normal execution reaches the until test; `break` exits without evaluating
+it. The assertion remains enabled. The adjacent NoOp cleanup now tests the contained
+node rather than its list.
+
+The four new `repeat-break-*.lua` programs cover the minimal failure, exit through
+either break or until, condition side effects, AND/OR short-circuit evaluation, and
+nested loops. Together with the original combined while/repeat/for fixture, these
+are 30 debug/stripped and layout variants. Every variant now passes in the matching
+VM; source and original bytecode observations agree first.
+
+Linux x86_64 / deployed Python 3.10.20: 130 → 160 behavior passes across 196 cases,
+30 → zero engine failures, no lost passes and no timeouts. The existing 33 behavior
+mismatches and three syntax failures remain unchanged. On the previous 172 cases
+alone, passes increase from 130 to 136. macOS Python 3.12.13: 88 → 108 passes across
+132 executable cases, with the same preservation checks and 64 non-GC64 dump2 cases
+explicitly unsupported on that platform. Both trials agree on recovered bytes and
+outcome classifications.
 
 `compilers.json` and `upstream.json` pin source revisions and archive hashes;
 `fixtures/fixtures.json` pins the authored source and bytecode bytes, layouts and

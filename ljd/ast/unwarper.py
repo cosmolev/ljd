@@ -2216,9 +2216,20 @@ def _unwarp_loop(start, end, body, expr_body=None):
         if _is_jump(first.warp):
             # Don't append to the body - it already has it
             expression.pop(0)
-            if len(body[-1].contents) == 1 and isinstance(body[-1].contents, nodes.NoOp):
+            if len(body[-1].contents) == 1 and isinstance(body[-1].contents[0], nodes.NoOp):
                 body[-1].contents = []
             body[-1].contents.append(nodes.Break())
+
+            # The branch which skips this break still targets the first block
+            # of the until expression. That block is about to become a Lua
+            # expression, not a member of the loop body. Give the non-break
+            # branch an empty body exit so it reaches the until test normally;
+            # the break branch must leave without evaluating that test.
+            body_exit = _create_next_block(body[-1])
+            _set_end(body_exit)
+            _replace_targets(body, expression[0], body_exit)
+            _set_flow_to(body[-1], body_exit)
+            body.append(body_exit)
 
         false = body[0]
         # Don't use end as it could be broken by a previous
