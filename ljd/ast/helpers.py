@@ -81,7 +81,7 @@ def has_same_table(node, table):
             self.current_function_depth = 0
 
         def visit_table_element(self, checked_node):
-            if is_equal(self.table, checked_node.table):
+            if is_equal(self.table, checked_node, strict=False) or is_equal(self.table, checked_node.table):
                 self.found = True
 
         def visit_function_definition(self, node):
@@ -91,6 +91,8 @@ def has_same_table(node, table):
             self.current_function_depth -= 1
 
         def visit_identifier(self, node):
+            if self.current_function_depth == 0 and is_equal(self.table, node, strict=False):
+                self.found = True
             if self.current_function_depth > 0 and node.type == node.T_UPVALUE:
                 if getattr(self.table, "name", False) == node.name:  # Use False to avoid matches on None
                     self.found = True

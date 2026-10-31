@@ -1526,10 +1526,12 @@ _NEGATION_MAP[binop.T_EQUAL] = binop.T_NOT_EQUAL
 
 
 def _invert(expression):
-    if isinstance(expression, nodes.UnaryOperator):
+    if isinstance(expression, nodes.UnaryOperator) and expression.type == expression.T_NOT:
         return expression.operand
 
-    if not isinstance(expression, nodes.BinaryOperator):
+    if not isinstance(expression, nodes.BinaryOperator) or expression.type in (
+            binop.T_LESS_THEN, binop.T_GREATER_THEN,
+            binop.T_LESS_OR_EQUAL, binop.T_GREATER_OR_EQUAL):
         node = nodes.UnaryOperator()
         node.type = nodes.UnaryOperator.T_NOT
         node.operand = expression

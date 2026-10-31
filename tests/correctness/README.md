@@ -1,11 +1,11 @@
 # Authored LuaJIT correctness checks
 
-These 256 cases qualify the scoped fixes from
+These 292 cases qualify the scoped fixes from
 [cosmolev/decompiler#174](https://github.com/cosmolev/decompiler/issues/174) and
 the loop-state repair for [#182](https://github.com/cosmolev/decompiler/issues/182),
 and upvalue binding for [#183](https://github.com/cosmolev/decompiler/issues/183).
 All inputs are authored programs. No recovered public/user program is executed.
-The four exact issue attachments are retained alongside 42 programs compiled with
+The four exact issue attachments are retained alongside 48 programs compiled with
 debug information and stripped, for each of three pinned compiler/VM profiles:
 LuaJIT dump1 non-GC64, dump2 GC64 and dump2 non-GC64.
 
@@ -54,9 +54,9 @@ function-local storage after the existing AST transformations.
 
 The earlier cdata, arity, swap and anonymous-call fixes remain covered. Stripped
 upvalue binding is repaired by the #183 follow-up below.
-The table-control accumulator now survives, but its table-read snapshots still do
-not; the overall control remains a mismatch. Method and short-circuit limitations
-also remain in the matrix. The stripped vararg control now passes with bound captures.
+The table-control accumulator and its table-read snapshots now survive. The method,
+table and short-circuit controls are repaired by the follow-up below. The stripped
+vararg control now passes with bound captures.
 Passing this finite suite does not establish universal LuaJIT recovery.
 
 ## Repeat/break reconstruction
@@ -144,3 +144,31 @@ bytes and classifications, after source/bytecode equivalence is verified.
 This is behavioral qualification of authored programs, not a claim of universal
 recovery. Explicit cells/factories add allocations; debug-library upvalue inspection,
 allocation-sensitive behavior and stack-frame identity are not qualified by this suite.
+
+## Constructor, snapshot and comparison repairs
+
+Relative to `755ec91d24d8a59e534b129da2e902e1e0879732`, all 18 remaining variants
+of the original method, table and short-circuit controls now pass. They expose four
+causes: constructor self-references evaluated before allocation, saved table reads
+moved across writes, NaN-unsafe relational negation, and uniquely defined branch
+values ignored when counting uses. Constructor keys and values are checked before
+folding. Table/global read snapshots cannot cross explicit writes or calls. Relational
+comparisons preserve operand order and explicit NOT; single reaching definitions
+are resolved before temporary elimination.
+
+The six `remaining-*.lua` sources add 36 debug/stripped and layout variants to the
+regular two-trial CI matrix. They cover self-references in keys and values, aliases,
+explicit calls, metamethod ordering, NaN in either operand, finite comparisons,
+distinct `__lt`/`__le` handlers, shared branch values and passing controls. Existing
+source/input identities are unchanged. The ad hoc `investigate_remaining.py` and
+`investigate_boundaries.py` scripts remain available for targeted comparisons;
+`verify.py` is the authoritative regression gate.
+
+The reviewed map expects all original 256 cases and 27 new variants to pass. The
+remaining nine variants record three existing boundary defects, once per layout:
+debug-name shadowing loses a block scope, stripped reads can reorder side-effecting
+`__index` calls, and an assignment followed by a parenthesized anonymous call can
+lack a separator. The first two are behavior mismatches; the last is a syntax
+failure. These remain explicit failures, with no previous pass lost. The read
+snapshot guard covers explicit effects; implicit metamethod effects require a
+follow-up. None of these results establishes universal recovery.

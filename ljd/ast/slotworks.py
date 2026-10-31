@@ -7,7 +7,7 @@ import ljd.ast.nodes as nodes
 import ljd.ast.traverse as traverse
 import ljd.ast.liveness as liveness
 import ljd.ast.upvalues as upvalues
-from ljd.ast.helpers import insert_table_record
+from ljd.ast.helpers import has_same_table, insert_table_record
 
 from typing import List
 from dataclasses import dataclass
@@ -258,6 +258,11 @@ def _fill_massive_refs(info, data: RefsProcessData, ignore_ambiguous, safe_mode=
 
 
 def _fill_simple_refs(info, data: RefsProcessData, ignore_ambiguous, safe_mode=True):
+    for ref in info.references[1:]:
+        if ref.identifier.id == -1 and getattr(ref.identifier, '_ids', []) == [info.slot_id]:
+            # A single reaching definition is not ambiguous. Count every branch
+            # use before deciding whether this definition can be eliminated.
+            ref.identifier.id = info.slot_id
     src = info.assignment.expressions.contents[0]
 
     src_is_table = isinstance(src, nodes.TableConstructor)
@@ -384,6 +389,10 @@ def _eliminate_simple_cases(simple):
         if _overwritten_register_dependency(info, ref, src):
             continue
 
+        if _preserve_heap_snapshot(info, ref, src):
+            info.assignment._preserve_live = True
+            continue
+
         if upvalues.preserve_call(info, ref, src):
             info.assignment._preserve_live = True
             continue
@@ -440,6 +449,48 @@ def _eliminate_simple_cases(simple):
             found = _replace_node(holder, dst, src)
 
         assert found
+
+
+def _preserve_heap_snapshot(info, ref, src):
+    """Keep table/global reads in place across explicit writes or calls."""
+    class Reads(traverse.Visitor):
+        def __init__(self):
+            self.found = False
+
+        def _visit(self, node):
+            if not isinstance(node, nodes.FunctionDefinition):
+                super()._visit(node)
+
+        def visit_table_element(self, node):
+            self.found = True
+
+    class Writes(Reads):
+        def visit_table_element(self, node):
+            pass
+
+        def visit_assignment(self, node):
+            if any(isinstance(d, nodes.TableElement) for d in node.destinations.contents):
+                self.found = True
+
+        def visit_function_call(self, node):
+            self.found = True
+
+    reads = Reads()
+    reads._visit(src)
+    if not reads.found:
+        return False
+    block = next((n for n in reversed(info.references[0].path) if isinstance(n, nodes.Block)), None)
+    if block is None or block not in ref.path or info.assignment not in block.contents:
+        return True
+    use = next((n for n in ref.path[ref.path.index(block) + 1:] if n in block.contents), None)
+    first = block.contents.index(info.assignment)
+    last = len(block.contents) if use is None else block.contents.index(use)
+    if last <= first:
+        return True
+    writes = Writes()
+    for statement in block.contents[first + 1:last]:
+        writes._visit(statement)
+    return writes.found
 
 
 def _overwritten_register_dependency(info, ref, src):
@@ -528,6 +579,10 @@ def _eliminate_into_table_constructors(tables):
         assert len(assignment.expressions.contents) == 1
         key = table_element.key
         value = assignment.expressions.contents[0]
+
+        if has_same_table(value, table_element.table) or has_same_table(key, table_element.table):
+            blocked.add(info.assignment)
+            continue
 
         success = insert_table_record(constructor, key, value, False)
 

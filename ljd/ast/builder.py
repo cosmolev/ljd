@@ -140,8 +140,7 @@ _WARP_INSTRUCTIONS = None
 
 
 def _blockenize(state, instructions):
-    # Fix inverted comparison expressions (e.g. 0 < variable):
-    _fix_inverted_comparison_expressions(state, instructions)
+    # Keep the encoded operand order: complement-and-swap is not NaN-safe.
 
     # Fix "repeat until true" encapsulated by another loop
     _fix_broken_repeat_until_loops(state, instructions)
@@ -965,6 +964,12 @@ def _build_comparison_expression(state, addr, instruction):
     operator.type = _COMPARISON_MAP[instruction.opcode]
     assert operator.type is not None
 
+    if opcode in (ins.ISLT.opcode, ins.ISLE.opcode):
+        negation = nodes.UnaryOperator()
+        negation.type = negation.T_NOT
+        negation.operand = operator
+        return negation
+
     return operator
 
 
@@ -1359,9 +1364,9 @@ def init():
 
     # Mind the inversion - comparison operators are affecting JMP to the next block
     # So in the normal code a comparison will be inverted
-    _COMPARISON_MAP[ins.ISLT.opcode] = nodes.BinaryOperator.T_GREATER_OR_EQUAL
+    _COMPARISON_MAP[ins.ISLT.opcode] = nodes.BinaryOperator.T_LESS_THEN
     _COMPARISON_MAP[ins.ISGE.opcode] = nodes.BinaryOperator.T_LESS_THEN
-    _COMPARISON_MAP[ins.ISLE.opcode] = nodes.BinaryOperator.T_GREATER_THEN
+    _COMPARISON_MAP[ins.ISLE.opcode] = nodes.BinaryOperator.T_LESS_OR_EQUAL
     _COMPARISON_MAP[ins.ISGT.opcode] = nodes.BinaryOperator.T_LESS_OR_EQUAL
 
     _COMPARISON_MAP[ins.ISEQV.opcode] = nodes.BinaryOperator.T_NOT_EQUAL

@@ -348,7 +348,7 @@ class MutatorVisitor(traverse.Visitor):
 
             src = statement.expressions.contents[0]
 
-            if has_same_table(src, table):
+            if has_same_table(src, table) or has_same_table(dst.key, table):
                 break
 
             success = insert_table_record(constructor, dst.key, src, False)

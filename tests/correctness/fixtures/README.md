@@ -1,6 +1,6 @@
 # Authored LuaJIT correctness fixtures (#174, #182, #183)
 
-`fixtures.json` identifies 256 genuine chunks: 42 authored programs × debug/stripped ×
+`fixtures.json` identifies 292 genuine chunks: 48 authored programs × debug/stripped ×
 three matching compiler/VM profiles, plus the four exact issue attachments. Each entry
 records source/input SHA-256, compiler revision, dump version, header flags and GC64
 layout. Issue attachments preserve their exact bytes; their original compiler binary
@@ -16,6 +16,8 @@ the until condition, including side effects, short-circuiting and nested breaks.
 The ten `upvalues-*.lua` programs cover descriptor binding, mutable siblings,
 snapshots and call order, capture chains, recursion, UCLO/register reuse, loop
 lifetimes, break/return edges, shadowing, multiple results and parent returns.
+The six `remaining-*.lua` sources cover constructor self-references, table-read
+snapshots and metamethod order, relational negation, branch values and controls.
 These sources are authored tests, so only their originals and recovered derivatives may
 be executed by the harness. Public/user programs are never behavioral test inputs.
 
@@ -24,11 +26,14 @@ source/bytecode oracle must agree before an engine result is classified. Every e
 runs twice; recovered bytes and outcome classifications must agree. Diagnostics retain
 raw paths/addresses; their normalized copies support comparison. The previous engine's
 stripped table totals can vary with hash iteration because it loses an accumulator
-write. The loop-state repair fixes that accumulator, but the table-read snapshot
-defect remains a behavior mismatch. The repeat/break follow-up repairs the combined
+write. The loop-state repair fixes that accumulator, and the snapshot follow-up
+repairs its table reads. The repeat/break follow-up repairs the combined
 loop fixture and all 24 new variants; they must pass behavior checks. All 60 new
-upvalue variants must also pass. The remaining 18 method/table/short-circuit
-mismatches remain explicit; no engine or syntax failure is relabeled a pass.
+upvalue variants and all 18 original method/table/short-circuit variants must also
+pass. Of the 36 new boundary variants, 27 must pass. Debug local-scope shadowing
+and stripped metamethod read ordering remain six behavior mismatches; stripped
+anonymous-call separators remain three syntax failures. No engine or syntax
+failure is relabeled a pass.
 
 Run `tests/correctness/verify.py` as documented in [the test guide](../README.md).
 `--generate` rebuilds all compiler-generated chunks in place while preserving exact
