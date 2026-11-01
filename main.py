@@ -474,6 +474,7 @@ class Main:
                                             del content_list[j - i]
 
         if not self.options.no_unwarp:
+            ljd.ast.locals.distinguish_local_bindings(ast)
             ljd.ast.upvalues.lower(ast)
             ljd.ast.locals.declare_registers(ast)
 

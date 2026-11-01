@@ -16,6 +16,69 @@ def mark_local_definitions(ast):
     traverse.traverse(_LocalDefinitionsMarker(), ast)
 
 
+def distinguish_local_bindings(ast):
+    """Keep debug bindings distinct when a source do-block has been flattened.
+
+    Register numbers and names can both be reused. Debug lifetimes identify the
+    binding, including copies of its VariableInfo made during reconstruction.
+    Reserve global names too: widening a local's scope must not capture a lookup
+    after the original block, or a lookup in a nested function.
+    """
+    class Names(traverse.Visitor):
+        def __init__(self):
+            self.used = set()
+            self.globals = set()
+
+        def visit_identifier(self, node):
+            if node.name:
+                self.used.add(node.name)
+
+        def visit_function_definition(self, node):
+            self.used.update(getattr(node, '_capture_cells', {}).values())
+            self.used.update(getattr(node, '_capture_bindings', []))
+
+        def visit_table_element(self, node):
+            if (isinstance(node.table, nodes.Identifier)
+                    and node.table.type == node.table.T_BUILTIN
+                    and node.table.name == '_env'
+                    and isinstance(node.key, nodes.Constant)):
+                self.globals.add(node.key.value)
+                self.used.add(node.key.value)
+
+    names = Names()
+    traverse.traverse(names, ast)
+
+    class Bindings(traverse.Visitor):
+        def __init__(self):
+            self.states = []
+
+        def visit_function_definition(self, node):
+            self.states.append(({}, set()))
+
+        def leave_function_definition(self, node):
+            self.states.pop()
+
+        def visit_identifier(self, node):
+            info = getattr(node, '_varinfo', None)
+            if node.type != node.T_LOCAL or info is None:
+                return
+            bindings, used = self.states[-1]
+            key = (node.slot, info.start_addr, info.end_addr)
+            if key not in bindings:
+                name = node.name
+                if name in used or name in names.globals:
+                    suffix = 2
+                    while name + '_' + str(suffix) in names.used:
+                        suffix += 1
+                    name += '_' + str(suffix)
+                bindings[key] = name
+                used.add(name)
+                names.used.add(name)
+            node.name = bindings[key]
+
+    traverse.traverse(Bindings(), ast)
+
+
 def declare_registers(ast):
     """Give surviving registers function-local storage after slot elimination.
 

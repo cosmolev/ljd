@@ -383,6 +383,21 @@ def _eliminate_simple_cases(simple):
         if src is None:
             src = info.assignment.expressions.contents[0]
 
+        if isinstance(src, nodes.TableConstructor):
+            # Some field writes cannot be folded (for example a closure factory
+            # which captures an upvalue cell). Keep the allocation before every
+            # surviving field write, even if there is only one other table use.
+            field_writes = []
+            for reference in info.references[1:]:
+                element = _get_holder(reference.path)
+                if isinstance(element, nodes.TableElement):
+                    statement = _get_holder(reference.path[:reference.path.index(element)])
+                    if (isinstance(statement, nodes.Assignment)
+                            and element in statement.destinations.contents):
+                        field_writes.append(statement)
+            if any(not _is_invalidated(statement) for statement in field_writes):
+                continue
+
         if _preserve_local_snapshot(info, ref, src):
             continue
 
@@ -452,32 +467,65 @@ def _eliminate_simple_cases(simple):
 
 
 def _preserve_heap_snapshot(info, ref, src):
-    """Keep table/global reads in place across explicit writes or calls."""
-    class Reads(traverse.Visitor):
-        def __init__(self):
+    """Preserve the order of explicit calls and implicit metamethod effects."""
+    class Effects:
+        def __init__(self, stop=None):
+            self.stop = stop
+            self.reached = False
             self.found = False
 
         def _visit(self, node):
-            if not isinstance(node, nodes.FunctionDefinition):
-                super()._visit(node)
+            if node is self.stop:
+                self.reached = True
+            if self.reached or isinstance(node, nodes.FunctionDefinition):
+                return
 
-        def visit_table_element(self, node):
-            self.found = True
-
-    class Writes(Reads):
-        def visit_table_element(self, node):
-            pass
-
-        def visit_assignment(self, node):
-            if any(isinstance(d, nodes.TableElement) for d in node.destinations.contents):
+            # AST traversal visits call arguments before the callee and table
+            # keys before the base. Use evaluation order when inspecting the
+            # prefix of the destination expression instead.
+            if isinstance(node, nodes.FunctionCall):
+                children = [node.function, node.arguments]
+            elif isinstance(node, nodes.TableElement):
+                children = [node.table, node.key]
+            elif isinstance(node, nodes.Assignment):
+                children = []
+                for dst in node.destinations.contents:
+                    if isinstance(dst, nodes.TableElement):
+                        children.extend([dst.table, dst.key])
+                children.append(node.expressions)
+            elif isinstance(node, nodes.BinaryOperator):
+                self._visit(node.left)
+                if self.stop is not None and not self.reached and node.type in (
+                        node.T_LOGICAL_AND, node.T_LOGICAL_OR):
+                    # Moving an effect under a short-circuit guard can suppress it.
+                    self.found = True
+                children = [node.right]
+            else:
+                children = []
+                for key, value in vars(node).items():
+                    if key.startswith('_') or key in ('target', 'true_target', 'false_target', 'body', 'way_out'):
+                        continue
+                    if hasattr(value, '_accept'):
+                        children.append(value)
+                    elif isinstance(value, list):
+                        children.extend(v for v in value if hasattr(v, '_accept'))
+            for child in children:
+                self._visit(child)
+            if self.reached:
+                return
+            if isinstance(node, (nodes.FunctionCall, nodes.TableElement)):
                 self.found = True
+            elif isinstance(node, nodes.BinaryOperator):
+                self.found |= node.type not in (node.T_LOGICAL_AND, node.T_LOGICAL_OR)
+            elif isinstance(node, nodes.UnaryOperator):
+                self.found |= node.type != node.T_NOT
+            elif isinstance(node, nodes.Assignment):
+                self.found |= (getattr(node, '_capture_access', False) or
+                               any(isinstance(d, nodes.TableElement) for d in node.destinations.contents))
 
-        def visit_function_call(self, node):
-            self.found = True
-
-    reads = Reads()
-    reads._visit(src)
-    if not reads.found:
+    effects = Effects()
+    effects._visit(src)
+    if not effects.found:
         return False
     block = next((n for n in reversed(info.references[0].path) if isinstance(n, nodes.Block)), None)
     if block is None or block not in ref.path or info.assignment not in block.contents:
@@ -485,12 +533,18 @@ def _preserve_heap_snapshot(info, ref, src):
     use = next((n for n in ref.path[ref.path.index(block) + 1:] if n in block.contents), None)
     first = block.contents.index(info.assignment)
     last = len(block.contents) if use is None else block.contents.index(use)
+    if use is None and block.warp in ref.path:
+        use = block.warp
     if last <= first:
         return True
-    writes = Writes()
+    intervening = Effects()
     for statement in block.contents[first + 1:last]:
-        writes._visit(statement)
-    return writes.found
+        intervening._visit(statement)
+    if intervening.found or use is None:
+        return True
+    prefix = Effects(stop=ref.identifier)
+    prefix._visit(use)
+    return prefix.found or not prefix.reached
 
 
 def _overwritten_register_dependency(info, ref, src):

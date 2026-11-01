@@ -1097,6 +1097,24 @@ def _get_next_significant(queue, i):
         return CMD_END_BLOCK,
 
 
+def _next_statement_is_parenthesized(queue, i):
+    # A newline does not separate `f()` from `(function ... end)()`. Inspect the
+    # next statement's first emitted token; this also covers parenthesized method
+    # receivers and callees. Block boundaries must not create empty statements.
+    for index in range(i + 1, len(queue)):
+        cmd = queue[index]
+        if cmd[0] in (CMD_END_LINE, CMD_START_STATEMENT):
+            continue
+        if cmd[0] != CMD_WRITE:
+            return False
+        _, fmt, args, kwargs = cmd
+        text = (fmt.format(*args, **kwargs) if args or kwargs else str(fmt)).lstrip()
+        if not text or text.startswith('--'):
+            continue
+        return text.startswith('(')
+    return False
+
+
 def _process_queue(fd, queue, wanted_tokens):
     indent = 0
 
@@ -1115,6 +1133,8 @@ def _process_queue(fd, queue, wanted_tokens):
             # assert line_broken
             pass
         elif cmd[0] == CMD_END_STATEMENT:
+            if _next_statement_is_parenthesized(queue, i):
+                wrapped_write(fd, ";")
             wrapped_write(fd, "\n")
             line_num += 1
             line_broken = True

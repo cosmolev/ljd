@@ -11,7 +11,9 @@ the path to the until test and skips that test when breaking. Upvalues bind to
 lexical parent storage using prototype descriptors, including stripped captures,
 mutation and UCLO lifetimes. Constructor self-references, table-read snapshots across
 explicit writes/calls, comparison negation and shared branch values are also preserved.
-The [292-case authored regression suite](tests/correctness/README.md)
+Debug bindings remain distinct after block flattening, implicit metamethod effects
+retain their evaluation order, and parenthesized statements receive separators.
+The [328-case authored regression suite](tests/correctness/README.md)
 records the verified improvements and remaining limitations. Engine changes live
 directly in this repository; downstream builds can pin this fork's commit.
 

@@ -1,11 +1,11 @@
 # Authored LuaJIT correctness checks
 
-These 292 cases qualify the scoped fixes from
+These 328 cases qualify the scoped fixes from
 [cosmolev/decompiler#174](https://github.com/cosmolev/decompiler/issues/174) and
 the loop-state repair for [#182](https://github.com/cosmolev/decompiler/issues/182),
 and upvalue binding for [#183](https://github.com/cosmolev/decompiler/issues/183).
 All inputs are authored programs. No recovered public/user program is executed.
-The four exact issue attachments are retained alongside 48 programs compiled with
+The four exact issue attachments are retained alongside 54 programs compiled with
 debug information and stripped, for each of three pinned compiler/VM profiles:
 LuaJIT dump1 non-GC64, dump2 GC64 and dump2 non-GC64.
 
@@ -164,11 +164,48 @@ source/input identities are unchanged. The ad hoc `investigate_remaining.py` and
 `investigate_boundaries.py` scripts remain available for targeted comparisons;
 `verify.py` is the authoritative regression gate.
 
-The reviewed map expects all original 256 cases and 27 new variants to pass. The
-remaining nine variants record three existing boundary defects, once per layout:
+At revision `743e42a`, the reviewed map expected all original 256 cases and 27 new
+variants to pass. Nine variants recorded three boundary defects, once per layout:
 debug-name shadowing loses a block scope, stripped reads can reorder side-effecting
 `__index` calls, and an assignment followed by a parenthesized anonymous call can
 lack a separator. The first two are behavior mismatches; the last is a syntax
-failure. These remain explicit failures, with no previous pass lost. The read
-snapshot guard covers explicit effects; implicit metamethod effects require a
-follow-up. None of these results establishes universal recovery.
+failure. These are repaired by the follow-up below. None of these results
+establishes universal recovery.
+
+## Binding, effect-order and statement-boundary repairs
+
+Debug names are assigned per binding identity (register and debug lifetime), so
+flattening a source `do` block cannot make its local replace an outer binding.
+Conflicting names receive a reserved suffix. Global lookups in nested functions
+and generated upvalue-cell names are reserved too. Captures retain the existing
+descriptor-based storage and UCLO handling; debug names do not determine capture
+identity.
+
+Temporary elimination treats table/global accesses and potentially overloaded
+operators as effects alongside explicit calls. It checks intervening statements
+and the evaluation prefix at the use, respecting callee/base evaluation before
+arguments/keys and short-circuit guards. An adjacent use in the same block's warp
+can still form its condition. Table allocations remain before surviving field
+writes, including closure factories that cannot be folded into an initializer.
+
+The writer terminates a statement with a semicolon when the next statement's first
+token is an opening parenthesis. Block boundaries stop the lookahead, avoiding
+empty statements at the beginning of a block. This works for anonymous functions,
+chained callees and parenthesized method receivers without changing line-map token
+positions or adding lines.
+
+The six `boundary-*.lua` sources add 36 variants. They cover nested and sibling
+bindings, parameters and loop-variable shadowing, global lookups and suffix
+collisions, side-effecting reads/writes/operators/calls, and consecutive/nested
+parenthesized statements. Existing source/input identities remain unchanged. The
+reviewed map now requires all 328 cases, including the nine formerly failing
+boundary variants, to pass original-bytecode and recovered-behavior checks.
+
+Linux x86_64 / deployed Python 3.10.20: **328/328 behavior passes**, improving
+from 289 against `743e42a`. The unchanged previous 292 cases improve from 283 to
+292 passes; all 36 new variants pass. macOS / Python 3.12.13: **220/220 supported
+passes**, improving from 194, with 108 non-GC64 dump2 variants explicitly
+unsupported on that host. Both engine trials agree on recovered bytes and
+classifications, and every candidate observation matches the source and original
+bytecode. There are no candidate syntax failures, engine failures or timeouts,
+and no previous pass is lost.
